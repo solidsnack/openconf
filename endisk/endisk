@@ -2,24 +2,43 @@
 set -o errexit -o nounset -o pipefail
 function -h {
 cat <<USAGE
- USAGE: diskdevil <label> <dir> <disk>+
-        diskdevil <label> <dir> <dir> <disk>+
+ USAGE: endisk <label> <dir> <disk>+
+        endisk <label> <dir> <disk>+ // <dir> (--all|--top)?
 
   Joins together disks, formats them, sets up fstab to mount the device in the
   designated place and if a second directory is given it is mirrored into the
   new filesystem. An example:
 
-    datadisk tmp-space /tmp /dev/xvdb /dev/xvdc 
+    endisk tmp-space /tmp /dev/xvdb /dev/xvdc // /tmp --top
 
   The <label> should be a letter-digit-hyphen name, like in DNS, to avoid
   running afoul of the many odd restrictions prevalent in the filesystem
   tools. The <label> is used to place a comment in fstab and to create an LVM
   volume group if needed.
 
+  Nonexistent devices are skipped. If none of the specified devices exist, it
+  is not an error; the program emits a message to say nothing was done.
+
+  The program places a comment in fstab that mirrors the command line used to
+  create the disk set, with any devices that were skipped removed. For
+  example, the fstab entry and comment for the above example might look like:
+
+    # endisk tmp-space /tmp /dev/xvdb /dev/xvdc // /tmp --top
+    /dev/tmp-space/main /tmp  auto  defaults,nobootwait,noatime     0       2
+
+  The comment serves two purposes: it allows endisk to skip configuring a disk
+  when run a second time and it documents the way the device was created.
+
+  When specifying a second directory, one can set whether to sync only the
+  topmost directory component or to sync recursively. The latter is the
+  default. The former is useful when initializing /tmp space or a log
+  directory. This functionality is very limited and could in principle be
+  extended with the full range of rsync options.
+
 USAGE
 }; function --help { -h ;}
 
-function diskdevil {
+function main {
   local label="$1"; shift
   local mountpoint="$1"; shift
   local spec=( "$label" "$mountpoint" )
@@ -57,6 +76,14 @@ function diskdevil {
     rsync -av "$template"/ "$mnt"
     clear_mount "$mnt"
   fi
+}
+
+function transfer {
+  local rsync=( rsync -av "$1"/ "$2" ) ; shift ; shift
+  case "${1:-}" in ""|--all) : ;; # Leave command as-is.
+                   --top)    rsync=( "${rsync[@]}" --exclude '/*' ) ;;
+  esac
+  "${rsync[@]}"
 }
 
 function clear_mount {
@@ -97,7 +124,7 @@ EOF
 
 # Note well: the spec[] array is set in an enclosing scope.
 function fstab_label {
-  out "diskdevil // ${spec[@]}"
+  out "endisk ${spec[@]}"
 }
 
 # If the disk is already formatted as ext4, leave it as is; otherwise,
@@ -128,6 +155,6 @@ function out { printf '%s\n' "$*" ;}
 
 if declare -F | cut -d' ' -f3 | fgrep -q -- "${1:-}"
 then "$@"
-else datadisk "$@"
+else main "$@"
 fi
 
