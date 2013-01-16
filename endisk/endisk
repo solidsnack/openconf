@@ -9,7 +9,7 @@ cat <<USAGE
   designated place and if a second directory is given it is mirrored into the
   new filesystem. An example:
 
-    endisk tmp-space /tmp /dev/xvdb // /tmp --top
+    endisk /tmp /dev/xvdb // /tmp --top
 
   The <label> should be a letter-digit-hyphen name, like in DNS, to avoid
   running afoul of the many odd restrictions prevalent in the filesystem
@@ -23,7 +23,7 @@ cat <<USAGE
   create the disk set, with any devices that were skipped removed. For
   example, the fstab entry and comment for the above example might look like:
 
-    # endisk tmp-space /tmp /dev/xvdb // /tmp --top
+    # endisk /tmp /dev/xvdb // /tmp --top
     /dev/xvdb /tmp  auto  defaults,nobootwait,noatime     0       2
 
   The comment serves two purposes: it allows endisk to skip configuring a disk
