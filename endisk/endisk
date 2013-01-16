@@ -107,7 +107,7 @@ function fstab {
   local ret=
   fgrep -qx -- "# $(fstab_label)" "$fstab" && ret=$? || ret=$?
   if [[ $ret -eq 1 ]]
-  then write_fstab "$label" "$device" "$mountpoint" "$fstab"
+  then write_fstab "$device" "$mountpoint" "$fstab"
   else return $ret # Pass success of fgrep or errors other than line not
   fi               # found up to the caller.
 }
