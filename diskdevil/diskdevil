@@ -1,0 +1,133 @@
+#!/bin/bash
+set -o errexit -o nounset -o pipefail
+function -h {
+cat <<USAGE
+ USAGE: diskdevil <label> <dir> <disk>+
+        diskdevil <label> <dir> <dir> <disk>+
+
+  Joins together disks, formats them, sets up fstab to mount the device in the
+  designated place and if a second directory is given it is mirrored into the
+  new filesystem. An example:
+
+    datadisk tmp-space /tmp /dev/xvdb /dev/xvdc 
+
+  The <label> should be a letter-digit-hyphen name, like in DNS, to avoid
+  running afoul of the many odd restrictions prevalent in the filesystem
+  tools. The <label> is used to place a comment in fstab and to create an LVM
+  volume group if needed.
+
+USAGE
+}; function --help { -h ;}
+
+function diskdevil {
+  local label="$1"; shift
+  local mountpoint="$1"; shift
+  local spec=( "$label" "$mountpoint" )
+  local disks=()
+  local disk=
+  local template=
+  if [[ -d "$1" ]]
+  then
+    template="$1"; shift
+    spec=( "${spec[@]}" "$template" )
+  fi
+  label_validate "$label" || err "Unsafe label for new FS or volume."
+  for p in "$@"
+  do
+    if [[ -b "$p" ]]
+    then disks=( "${disks[@]:+${disks[@]}}" "$p" )
+    else [[ ! -e "$p" ]] || err "Path $p exists but is not a block device."
+    fi
+  done
+  [[ ${#disks[@]} -gt 0 ]] ||
+    end "Skipping $label; none of the disks were found."
+  if [[ ${#disks[@]} -gt 1 ]]
+  then disk="$(merge_devs "$label" "${disks[@]}")"
+  else disk="${disks[0]}"
+  fi
+  spec=( "${spec[@]}" "${disks[@]}" )
+  ext4 "$disk"
+  fstab "$label" "$mountpoint" "$disk"
+  if [[ $template ]]
+  then
+    local mnt=/media/datadisk."$(date -u +%FT%TZ)".$$
+    trap "clear_mount $mnt" EXIT
+    mkdir "$mnt"
+    mount "$disk" "$mnt"
+    rsync -av "$template"/ "$mnt"
+    clear_mount "$mnt"
+  fi
+}
+
+function clear_mount {
+  if cut -d' ' -f2 /proc/mounts | fgrep -xq -- "$1"
+  then umount "$1" && rm -rf "$1"
+  fi
+}
+
+# Label should be letter-digit-hyphen, like domain name components. Why? Well,
+# probably LVM does not like certain characters in volume group names; and the
+# fstab format is doubtless vulnerable to infelicities with regards to
+# newlines and other characters.
+function label_validate {
+  [[ $1 =~ ^[a-z0-9A-Z]([a-z0-9A-Z-]*[a-z0-9A-Z])?$ ]]
+}
+
+function fstab {
+  local label="$1"
+  local mountpoint="$2"
+  local device="$3"
+  local fstab="${4:-/etc/fstab}"
+  local ret=
+  label_validate "$label" || err "Unsafe label for new FS or volume."
+  fgrep -q -- "$(fstab_label "$1")" "$fstab" && ret=$? || ret=$?
+  if [[ $ret -eq 1 ]]
+  then write_fstab "$label" "$device" "$mountpoint" "$fstab"
+  else return $ret # Pass success of fgrep or errors other than line not
+  fi               # found up to the caller.
+}
+
+function write_fstab {
+local f="${4:-/etc/fstab}"
+cat >> "${4:-/etc/fstab}" <<EOF
+# $(fstab_label "$1")
+$2	$3	auto	defaults,nobootwait,noatime	0	2
+EOF
+}
+
+# Note well: the spec[] array is set in an enclosing scope.
+function fstab_label {
+  out "diskdevil // ${spec[@]}"
+}
+
+# If the disk is already formatted as ext4, leave it as is; otherwise,
+# reformat it.
+function ext4 {
+  local blkid=
+  if blkid="$(blkid -o value -s TYPE "$1")"
+  then [[ $blkid = ext4 ]] || mkfs.ext4 -m 0 "$1"
+  fi
+}
+
+function merge_devs {
+  local name="$1"; shift
+  if vgs "$name" &>/dev/null # If the VG exists,
+  then
+    lvs "$name"/main &>/dev/null # the LV must exist.
+  else
+    lvm vgcreate "$name" "$@" 1>&2
+    lvm lvcreate --name main --extents 80%VG "$name" >&2
+  fi
+  lvs --noheadings --options lv_path "$name"/main | sed 's/^ *//'
+}
+
+function msg { out "$*" >&2 ;}
+function err { local x=$? ; msg "$*" ; return $(( $x == 0 ? 1 : $x )) ;}
+function end { msg "$*" ; return 0 ;}
+function out { printf '%s\n' "$*" ;}
+
+if declare -F | cut -d' ' -f3 | fgrep -q -- "${1:-}"
+then "$@"
+else datadisk "$@"
+fi
+
