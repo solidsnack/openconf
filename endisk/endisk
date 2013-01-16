@@ -62,7 +62,7 @@ function main {
   done
   [[ ${#devs[@]} -gt 0 ]] || end "Skipping; none of the disks were found."
   if [[ ${#devs[@]} -gt 1 ]]
-  then err "But one disk, please." #disk="$(merge_disks "$label" "${devs[@]}")"
+  then err "But one disk, please." #disk="$(lvm_disk "$label" "${devs[@]}")"
   else disk="${devs[0]}"
   fi
   local spec=( "$mountpoint" "${devs[@]}" )
@@ -134,7 +134,8 @@ function ext4 {
   fi
 }
 
-function merge_devs {
+function lvm_disk {
+  which lvm &>/dev/null || err "Please install lvm2 to use the LVM feature."
   local name="$1"; shift
   if vgs "$name" &>/dev/null # If the VG exists,
   then
