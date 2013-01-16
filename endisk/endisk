@@ -42,38 +42,6 @@ cat <<USAGE
 USAGE
 }; function --help { -h ;}
 
-
-function mountpoint {
-  mountpoint="$1"; shift
-  disks "$@"
-}
-
-function disks {
-  while [[ $1 ]]
-  do case "$1" in
-    //) shift ; template "$@" ;;
-    *)  disks=( "${disks[@]:+${disks[@]}}" "$1" ) ; shift ;;
-  esac done
-}
-
-function template {
-  template=( rsync_template "$@" )
-}
-
-
-function with_args {
-  for arg in "$@"
-  do case "$mode" in
-    template) if [[ $arg = // ]]
-              then err ...
-              else
-              fi ;;
-    b) ;;
-    c) ;;
-  esac done
-}
-
-
 function main {
   local mountpoint="$1"; shift      ##  Where to mount the eventual disk.
   local disk=                       ##  The disk to eventually mount.
