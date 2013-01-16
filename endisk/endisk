@@ -67,6 +67,7 @@ function main {
   fi
   local spec=( "$mountpoint" "${devs[@]}" )
   [[ ${#template[@]} -le 0 ]] || spec=( "${spec[@]}" // "${template[@]}" )
+  ! check_fstab || return 0
   ext4 "$disk"
   fstab "$mountpoint" "$disk"
   [[ ${#template[@]} -le 0 ]] || template "${template[@]}"
@@ -100,12 +101,16 @@ function label_validate {
   [[ $1 =~ ^[a-z0-9A-Z]([a-z0-9A-Z-]*[a-z0-9A-Z])?$ ]]
 }
 
+function check_fstab {
+  fgrep -qx -- "# $(fstab_label)" "${1:-/etc/fstab}"
+}
+
 function fstab {
   local mountpoint="$1"
   local device="$2"
   local fstab="${3:-/etc/fstab}"
   local ret=
-  fgrep -qx -- "# $(fstab_label)" "$fstab" && ret=$? || ret=$?
+  check_fstab "$fstab" && ret=$? || ret=$?
   if [[ $ret -eq 1 ]]
   then write_fstab "$device" "$mountpoint" "$fstab"
   else return $ret # Pass success of fgrep or errors other than line not
