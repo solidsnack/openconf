@@ -77,14 +77,14 @@ function main {
   local spec=( "$mountpoint" "${devs[@]}" )
   [[ ${#template[@]} -le 0 ]] || spec=( "${spec[@]}" // "${template[@]}" )
   check_fstab && ret=$? || ret=$?
-  if [[ $ret -eq 1 ]]
-  then
-    ext4 "$disk"
-    fstab "$mountpoint" "$disk"
-    [[ ${#template[@]} -le 0 ]] || template "${template[@]}"
-  else return $ret # Pass success of fgrep or errors other than line not
-  fi               # found up to the caller.
-  ! $mount || idempotent_mount "$disk"
+  case "$ret" in
+    0) : ;;
+    1) ext4 "$disk"
+       fstab "$mountpoint" "$disk"
+       [[ ${#template[@]} -le 0 ]] || template "${template[@]}" ;;
+    *) return $ret ;; # Pass success of fgrep or errors other than line not
+  esac                # found up to the caller.
+  ! $mount || idempotent_mount "$mountpoint"
 }
 
 function template {
