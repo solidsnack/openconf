@@ -2,8 +2,8 @@
 set -o errexit -o nounset -o pipefail
 function -h {
 cat <<USAGE
- USAGE: endisk <dir> <disk>
-        endisk <dir> <disk> // <dir> (--all|--top)?
+ USAGE: endisk <dir> <disk> (--(no-)?mount)?
+        endisk <dir> <disk> (--(no-)?mount)? // <dir> (--all|--top)?
 
   Joins together disks, formats them, sets up fstab to mount the device in the
   designated place and if a second directory is given it is mirrored into the
@@ -11,13 +11,16 @@ cat <<USAGE
 
     endisk /tmp /dev/xvdb // /tmp --top
 
-  The <label> should be a letter-digit-hyphen name, like in DNS, to avoid
-  running afoul of the many odd restrictions prevalent in the filesystem
-  tools. The <label> is used to place a comment in fstab and to create an LVM
-  volume group if needed.
-
   Nonexistent devices are skipped. If none of the specified devices exist, it
   is not an error; the program emits a message to say nothing was done.
+
+  With the --mount option, the disk will be mounted after all other steps have
+  completed. Without it, or with --no-mount, the necessary entry will be
+  created in /etc/fstab but the disk will not be mounted. If the filesystem is
+  already mounted, the --mount option merely skips over it; but --no-mount
+  does not unmount it. It is really an operational convenience, to make
+  idempotent setup following disk setup easier, rather than a part of the
+  filesystem specification.
 
   The program places a comment in fstab that mirrors the command line used to
   create the disk set, with any devices that were skipped removed. For
@@ -27,22 +30,27 @@ cat <<USAGE
     /dev/xvdb /tmp  auto  defaults,nobootwait,noatime     0       2
 
   The comment serves two purposes: it allows endisk to skip configuring a disk
-  when run a second time and it documents the way the device was created.
+  when run a second time and it documents the way the device was created. The
+  --mount option is not included in the comment.
 
-  When specifying a second directory, one can set whether to sync only the
-  topmost directory component or to sync recursively. The latter is the
-  default. The former is useful when initializing /tmp space or a log
-  directory. This functionality is very limited and could in principle be
-  extended with the full range of rsync options.
+  When specifying a second directory after //, one can set whether to sync
+  only the topmost directory component (--top) or to sync recursively (--all).
+  The latter is the default. The former is useful when initializing /tmp space
+  or a log directory prior to a reboot. This functionality is very limited and
+  could in principle be extended with the full range of rsync options. Note
+  that this syncing occurs *only once*, when the filesystem is created.
 
  TODO
 
   Expose LVM support.
 
+  Allow the file source after // to be an HTTP URL, pointing to a tarball.
+
 USAGE
 }; function --help { -h ;}
 
 function main {
+  local mount=false
   local mountpoint="$1"; shift      ##  Where to mount the eventual disk.
   local disk=                       ##  The disk to eventually mount.
   local disks=()                    ##  Array of disk source args.
@@ -50,8 +58,9 @@ function main {
   local template=()                 ##  Arguments to the template unpacker.
   while [[ ${1:-} ]]
   do case "$1" in
-    //) shift ; [[ $# -le 0 ]] || template=( "$@" ) ; break ;;
-    *)  disks=( "${disks[@]:+${disks[@]}}" "$1" ) ; shift ;;
+    --mount) mount=true ; shift ;;
+    //)      shift ; [[ $# -le 0 ]] || template=( "$@" ) ; break ;;
+    *)       disks=( "${disks[@]:+${disks[@]}}" "$1" ) ; shift ;;
   esac done
   for dev in "${disks[@]}"
   do
@@ -67,10 +76,15 @@ function main {
   fi
   local spec=( "$mountpoint" "${devs[@]}" )
   [[ ${#template[@]} -le 0 ]] || spec=( "${spec[@]}" // "${template[@]}" )
-  ! check_fstab || return 0
-  ext4 "$disk"
-  fstab "$mountpoint" "$disk"
-  [[ ${#template[@]} -le 0 ]] || template "${template[@]}"
+  check_fstab && ret=$? || ret=$?
+  if [[ $ret -eq 1 ]]
+  then
+    ext4 "$disk"
+    fstab "$mountpoint" "$disk"
+    [[ ${#template[@]} -le 0 ]] || template "${template[@]}"
+  else return $ret # Pass success of fgrep or errors other than line not
+  fi               # found up to the caller.
+  ! $mount || idempotent_mount "$disk"
 }
 
 function template {
@@ -85,11 +99,18 @@ function template {
   mount "$disk" "$mnt"
   "${rsync[@]}"
   clear_mount "$mnt"
+  trap - EXIT
 }
 
 function clear_mount {
   if cut -d' ' -f2 /proc/mounts | fgrep -xq -- "$1"
   then umount "$1" && rm -rf "$1"
+  fi
+}
+
+function idempotent_mount {
+  if ! ( cut -d' ' -f2 /proc/mounts | fgrep -xq -- "$1" )
+  then mount "$1"
   fi
 }
 
