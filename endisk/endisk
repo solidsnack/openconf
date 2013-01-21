@@ -69,8 +69,8 @@ function main {
     else [[ ! -e "$dev" ]] || err "Path $dev exists but is not a block device."
     fi
   done
-  [[ ${#devs[@]} -gt 0 ]] || { msg "Skipping; none of the disks were found."
-                               return 0 ;}
+  [[ ${#devs[@]} -gt 0 ]] ||
+    { msg "Skipping; none of the disks (${disks[@]}) were found." ; return 0 ;}
   if [[ ${#devs[@]} -gt 1 ]]
   then err "But one disk, please." #disk="$(lvm_disk "$label" "${devs[@]}")"
   else disk="${devs[0]}"
@@ -176,7 +176,6 @@ function lvm_disk {
 
 function msg { out "$*" >&2 ;}
 function err { local x=$? ; msg "$*" ; return $(( $x == 0 ? 1 : $x )) ;}
-function end { msg "$*" ; return 0 ;}
 function out { printf '%s\n' "$*" ;}
 
 if declare -F | cut -d' ' -f3 | fgrep -q -- "${1:-}"
