@@ -111,7 +111,7 @@ function clear_mount {
 
 function idempotent_mount {
   if ! ( cut -d' ' -f2 /proc/mounts | fgrep -xq -- "$1" )
-  then mount "$1"
+  then mkdir -p "$1" && mount "$1"
   fi
 }
 
