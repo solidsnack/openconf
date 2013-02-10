@@ -178,7 +178,7 @@ function msg { out "$*" >&2 ;}
 function err { local x=$? ; msg "$*" ; return $(( $x == 0 ? 1 : $x )) ;}
 function out { printf '%s\n' "$*" ;}
 
-if declare -F | cut -d' ' -f3 | fgrep -q -- "${1:-}"
+if declare -F | cut -d' ' -f3 | fgrep -qx -- "${1:-}"
 then "$@"
 else main "$@"
 fi
