@@ -158,6 +158,7 @@ function ext4 {
   local blkid=
   if blkid="$(blkid -o value -s TYPE "$1")"
   then [[ $blkid = ext4 ]] || mkfs.ext4 -m 0 "$1"
+  else err "Not able to read blkid from $1"
   fi
 }
 
