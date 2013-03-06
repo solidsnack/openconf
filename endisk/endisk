@@ -157,8 +157,14 @@ function fstab_label {
 function ext4 {
   local blkid=
   if blkid="$(blkid -o value -s TYPE "$1")"
-  then [[ $blkid = ext4 ]] || mkfs.ext4 -m 0 "$1"
-  else err "Not able to read blkid from $1"
+  then
+    [[ $blkid = ext4 ]] || mkfs.ext4 -m 0 "$1"
+  else
+    local code=$?
+    if [[ $code -eq 2 ]]
+    then mkfs.ext4 -m 0 "$1"
+    else err "Not able to read blkid from $1"
+    fi
   fi
 }
 
