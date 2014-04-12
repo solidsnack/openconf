@@ -1,0 +1,70 @@
+#!/bin/bash
+set -o errexit -o nounset -o pipefail
+function -h {
+cat <<USAGE
+ USAGE: set-hostname <name>
+        set-hostname set_all <name>*
+
+  In the first form, set the running host's hostname. In the second form,
+  connect to the target hosts and set their internal hostnames to match the
+  external hostnames used to connect to them.
+
+USAGE
+}; function --help { -h ;}                 # A nice way to handle -h and --help
+
+function main {
+  [[ $# -eq 1 ]] || err "Did you mean to pass set_all?"
+  set_hostname "$1"
+}
+
+function globals {
+  export LC_ALL=en_US.UTF-8                  # A locale that works consistently
+  export LANG="$LC_ALL"
+}; globals
+
+function set_hostname {
+  hostname "$1"
+  echo "$1" > /etc/hostname
+  # TODO: /etc/hosts
+}
+
+function set_all {
+  for host in "$@"
+  do remote "$host" --sudo -- set_hostname "$host"
+  done
+}
+
+##################################################################### Utilities
+
+# Used like this: remote <ssh options> -- <command> <arg>*
+function remote {
+  local ssh=( -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no )
+  local shell=( bash )
+  while [[ ${1:+isset} ]]
+  do
+    case "$1" in
+      --sudo) shell=( sudo bash ) ; shift ;;
+      --)     shift ; break ;;
+      *)      ssh=( "${ssh[@]}" "$1" ) ; shift ;;
+    esac
+  done
+  serialized "$@" | ssh "${ssh[@]}" "${shell[@]}"
+}
+
+# Set up the actor on the remote end and then send it a message.
+function serialized {
+  declare -f
+  echo set -o errexit -o nounset -o pipefail
+  echo -n 'globals &&'
+  printf ' %q' "$@" ; echo
+}
+
+function msg { out "$*" >&2 ;}
+function err { local x=$? ; msg "$*" ; return $(( $x == 0 ? 1 : $x )) ;}
+function out { printf '%s\n' "$*" ;}
+
+if [[ ${1:-} ]] && declare -F | cut -d' ' -f3 | fgrep -qx -- "${1:-}"
+then "$@"
+else main "$@"
+fi
+
