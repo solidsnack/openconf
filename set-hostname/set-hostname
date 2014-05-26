@@ -3,7 +3,7 @@ set -o errexit -o nounset -o pipefail
 function -h {
 cat <<USAGE
  USAGE: set-hostname <name>
-        set-hostname set_all <name>*
+        set-hostname remote <name>*
 
   In the first form, set the running host's hostname. In the second form,
   connect to the target hosts and set their internal hostnames to match the
@@ -13,8 +13,14 @@ USAGE
 }; function --help { -h ;}                 # A nice way to handle -h and --help
 
 function main {
-  [[ $# -eq 1 ]] || err "Did you mean to pass set_all?"
-  set_hostname "$1"
+  if [[ ${0##*/} = set-hostnames ]]
+  then
+    [[ $# -gt 0 ]] || err "Please pass a host list."
+    remote "$@"
+  else
+    [[ $# -eq 1 ]] || err "Did you mean to pass remote?"
+    set_hostname "$1"
+  fi
 }
 
 function globals {
@@ -28,7 +34,7 @@ function set_hostname {
   # TODO: /etc/hosts
 }
 
-function set_all {
+function remote {
   for host in "$@"
   do remote "$host" --sudo -- set_hostname "$host"
   done
